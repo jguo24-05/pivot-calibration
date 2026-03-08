@@ -1,5 +1,5 @@
 '''
-A simple Program for grabing video from basler camera and converting it to opencv img.
+A simple Program for grabbing video from basler camera and converting it to opencv img.
 Tested on Basler acA1300-200uc (USB3, linux 64bit , python 3.5)
 
 '''
