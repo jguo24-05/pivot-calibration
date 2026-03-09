@@ -2,15 +2,18 @@ from pypylon import pylon
 import numpy as np
 import cv2
 
+
+# TODO: improve image quality and coverage, speed this process up if possible 
+
 def main():
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.1)
     chessW = 10
     chessH = 7
 
     # conecting to the first available camera
     camera = pylon.InstantCamera(pylon.TlFactory.GetInstance().CreateFirstDevice())
 
-    # Grabing Continusely (video) with minimal delay
+    # Grabbing Continusely (video) with minimal delay
     camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly) 
     converter = pylon.ImageFormatConverter()
 
@@ -39,24 +42,23 @@ def main():
             color_image = image.GetArray()
             gray = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
 
-            cv2.imshow(win_name, gray)
+            cv2.imshow(win_name, color_image)
             ret, corners = cv2.findChessboardCorners(gray, (chessW,chessH), None)
 
             # If found, add object points, image points (after refining them)
             if ret == True:
                 objpoints.append(objp)
 
-                corners2 = cv2.cornerSubPix(gray,corners, (11,11), (-1,-1), criteria)
+                corners2 = cv2.cornerSubPix(gray,corners, (5,5), (-1,-1), criteria)
                 imgpoints.append(corners2)
+                cv2.imwrite(f'./chessboard{numImages}.png', color_image)
+                numImages += 1;
 
                 # Draw and display the corners
-                cv2.drawChessboardCorners(gray, (chessW,chessH), corners2, ret)
-                cv2.imshow(win_name, gray)
+                cv2.drawChessboardCorners(color_image, (chessW,chessH), corners2, ret)
+                cv2.imshow(win_name, color_image)
 
             key = cv2.waitKey(1) & 0xFF
-            if (key == ord('s')):
-                cv2.imwrite(f"C:/Users/ninig/JHU_Work/lcsr/calibration_current_iteration/chessboard{numImages}.png", color_image)
-                numImages += 1;
             if (key == ord('q')):
                 grabResult.Release()
         

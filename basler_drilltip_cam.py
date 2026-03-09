@@ -48,7 +48,7 @@ def distBetweenLines(line1, line2): # assumes parallel lines
 
 
 # Detect lines using Probabilistic Hough Transform
-def detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges, parallelTolerance):
+def detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges, maxDistBtwnEdges, parallelTolerance):
     lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=line_thresh, minLineLength=minLineLength, maxLineGap=maxLineGap) 
 
     if lines is not None:
@@ -56,11 +56,20 @@ def detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges,
         if (len(lines) < 2):
             return None    # skip this frame if fewer than two lines were found 
     
-        for i in range(len(lines)-1):    
+        for i in range(len(lines)-1):   
+            ax1, ay1, ax2, ay2 = lines[i][0]
+            # cv2.line(edges, (ax1, ay1), (ax2, ay2), (255, 0, 0), 5)    
+                
             for j in range(i, len(lines)):
                 line1 = lines[i]
                 line2 = lines[j]
-                if (checkParallel(line1, line2, parallelTolerance) and distBetweenLines(line1, line2) > minDistBtwnEdges):
+                isParallel = checkParallel(line1, line2, parallelTolerance)
+                distBtwnEdges = distBetweenLines(line1, line2)
+
+                print(f"is parallel: {isParallel}")
+                print(f"distBtwnEdges: {distBtwnEdges}")
+
+                if (isParallel and distBtwnEdges > minDistBtwnEdges and distBtwnEdges < maxDistBtwnEdges):
                     return (line1, line2)
         
         return None     # no parallel lines were found this frame
@@ -96,7 +105,16 @@ def main():
     converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
 
     # 1. Calibrate the Camera
-    cameraMatrix, dist_coeffs = returnCameraCoeffs()
+    # cameraMatrix, distCoeffs = returnCameraCoeffsFisheye()
+
+    json_file_path = './opposite_cam_calibration.json'
+    with open(json_file_path, 'r') as file: # Read the JSON file
+        json_data = json.load(file)
+
+    cameraMatrix = np.array(json_data['mtx'])
+    distCoeffs = np.array(json_data['dist'])
+    objpoints = np.array(json_data['objpoints'], dtype=np.float32).reshape(-1, 1, 3)
+    imgpoints = np.array(json_data['imgpoints'], dtype=np.float32).reshape(-1, 1, 2)
 
     # 2. Initialize UI Window and Trackbars
     win_name = 'Drill 3D Pose Estimation'
@@ -118,7 +136,9 @@ def main():
     # Maximum Line Gap: Maximum allowed gap in a line
     cv2.createTrackbar('Maximum Line Gap', win_name, 50, 250, nothing)
     # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Minimum Distance Between Edges', win_name, 100, 500, nothing)
+    cv2.createTrackbar('Minimum Distance Between Edges', win_name, 5, 100, nothing)
+    # Minimum Distance Between Edge Lines
+    cv2.createTrackbar('Maximum Distance Between Edges', win_name, 10, 100, nothing)
     # Tolerance for how far the radius can be from the detected central axis
     cv2.createTrackbar('Maximum Error for Tip and Axis Alignment', win_name, 25, 50, nothing)
 
@@ -132,14 +152,7 @@ def main():
             color_image = image.GetArray()
 
             # undistort the image
-            h,  w = color_image.shape[:2]
-            newcameramtx, roi = cv2.getOptimalNewCameraMatrix(cameraMatrix, dist_coeffs, (w,h), 1, (w,h))
-            dst = cv2.undistort(color_image, cameraMatrix, dist_coeffs, None, newcameramtx)
-            
-            # crop the image
-            x, y, w, h = roi
-            dst = dst[y:y+h, x:x+w]
-            color_image = dst
+            new_K, color_image = undistortFisheye(cameraMatrix, distCoeffs, color_image)
             
             # 2. Preprocessing (Grayscale + Gaussian Blur)
             gray = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
@@ -153,6 +166,7 @@ def main():
             minLineLength = cv2.getTrackbarPos('Minimum Line Length', win_name)
             maxLineGap = cv2.getTrackbarPos('Maximum Line Gap', win_name)
             minDistBtwnEdges = cv2.getTrackbarPos('Minimum Distance Between Edges', win_name)
+            maxDistBtwnEdges = cv2.getTrackbarPos('Maximum Distance Between Edges', win_name)
             minRadius = cv2.getTrackbarPos('Minimum Radius', win_name)
             maxRadius = cv2.getTrackbarPos('Maximum Radius', win_name)
             dispTolerance = cv2.getTrackbarPos('Maximum Error for Tip and Axis Alignment', win_name)
@@ -161,7 +175,7 @@ def main():
             cannyMinThreshold = 80;
             edges = cv2.Canny(blurred, cannyMinThreshold, cannyThreshold);
             
-            lineTuple = detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges, 5)    
+            lineTuple = detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges, maxDistBtwnEdges, 10)    
             if (lineTuple is not None):
                 line1 = lineTuple[0]
                 line2 = lineTuple[1]
@@ -198,9 +212,16 @@ def main():
                     
                     cv2.circle(color_image, (center_x, center_y), radius, (0, 255, 0), 2)
                     cv2.circle(color_image, (center_x, center_y), 2, (0, 0, 255), 3)
-                    cv2.putText(color_image, f"Microns per pixel: {micronsOverPixels: .2f}", (70, 80), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 0, 0), 3)
-                    cv2.putText(color_image, f"Slope of tool: {centralAxisSlope: .2f}", (70, 150), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 0, 0), 3)
+                    cv2.putText(color_image, f"Microns per pixel: {micronsOverPixels: .2f}", (70, 80), cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0, 255, 0), 3)
+                    cv2.putText(color_image, f"Slope of tool: {centralAxisSlope: .2f}", (70, 150), cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0, 255, 0), 3)
+
+                    # 5. Calculate the world coordinates using the camera's intrinsic and extrinsic parameters
+                    R_mtx, tvec = findRTvecs(objpoints, imgpoints, new_K, distCoeffs)
+                    worldCoords = calcWorldCoordinates(center[0], center[1], new_K, R_mtx, tvec)
+
+                    cv2.putText(color_image, f"Center (mm): ({worldCoords[0][0] :.2f}, {worldCoords[1][0]: .2f})", (70, 220), cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0, 255, 0), 3)
             
+
             # Show Result
             cv2.imshow(win_name, color_image)
             

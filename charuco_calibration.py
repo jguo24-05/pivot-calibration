@@ -11,6 +11,8 @@ MARKER_LENGTH = 15                   # ArUco marker side length (in pixels)
 MARGIN_PX = 20                       # Margins size (in pixels)
 
 
+# TODO: test out charuco calibration to see if rms is better
+
 def get_calibration_parameters(img_dir):
     # Define the aruco dictionary, charuco board and detector
     dictionary = cv2.aruco.getPredefinedDictionary(ARUCO_DICT)
@@ -41,7 +43,7 @@ def get_calibration_parameters(img_dir):
         
         if len(marker_ids) > 0: # If at least one marker is detected
             # cv2.aruco.drawDetectedMarkers(image_copy, marker_corners, marker_ids)
-            ret, charucoCorners, charucoIds = cv2.aruco.interpolateCornersCharuco(marker_corners, marker_ids, image, board) # TODO: read docs
+            ret, charucoCorners, charucoIds = cv2.aruco.interpolateCornersCharuco(marker_corners, marker_ids, image, board) 
 
             if charucoIds is not None and len(charucoCorners) > 3:
                 all_charuco_corners.append(charucoCorners)
