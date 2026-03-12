@@ -96,7 +96,7 @@ def main():
     # conecting to the first available camera
     camera = pylon.InstantCamera(pylon.TlFactory.GetInstance().CreateFirstDevice())
 
-    # Grabing Continusely (video) with minimal delay
+    # Grabbing Continusely (video) with minimal delay
     camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly) 
     converter = pylon.ImageFormatConverter()
 
