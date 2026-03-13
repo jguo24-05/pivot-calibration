@@ -8,6 +8,7 @@ SQUARE_LENGTH = 30                   # Square side length (in pixels)
 MARKER_LENGTH = 24                   # ArUco marker side length (in pixels)
 MARGIN_PX = 0                       # Margins size (in pixels)
 
+# TODO: get more images with better coverage
 
 def main():
     dictionary = cv2.aruco.getPredefinedDictionary(ARUCO_DICT)
@@ -53,7 +54,6 @@ def main():
                     cv2.aruco.drawDetectedMarkers(color_image, marker_corners, marker_ids)
                        
             cv2.imshow(win_name, color_image)
-                
 
             key = cv2.waitKey(1) & 0xFF
             if (key == ord('q')):

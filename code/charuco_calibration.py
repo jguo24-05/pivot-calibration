@@ -9,7 +9,6 @@ SQUARES_HORIZONTALLY = 7             # Number of squares horizontally
 SQUARE_LENGTH = 30                   # Square side length (in pixels)
 MARKER_LENGTH = 24                   # ArUco marker side length (in pixels)
 MARGIN_PX = 0                       # Margins size (in pixels)
-OUTPUT_JSON = "./adjacent_camera_calibration.json"
 
 def get_calibration_parameters(img_dir):
     # Define the aruco dictionary, charuco board and detector
@@ -26,6 +25,9 @@ def get_calibration_parameters(img_dir):
     images = glob.glob(img_dir)
     all_charuco_ids = []
     all_charuco_corners = []
+
+    objpoints = [] # 3d point in real world space
+    imgpoints = [] # 2d points in image plane.'
 
     imgOne = cv2.imread(images[0])
     shape = np.empty((1, 2))
@@ -49,30 +51,36 @@ def get_calibration_parameters(img_dir):
         if marker_ids is not None and len(marker_ids) > 0: # If at least one marker is detected
             cv2.aruco.drawDetectedMarkers(image_copy, marker_corners, marker_ids)
             ret, charucoCorners, charucoIds = cv2.aruco.interpolateCornersCharuco(marker_corners, marker_ids, image, board) 
+            objpts, imgpts = cv2.aruco.getBoardObjectAndImagePoints(board, charucoCorners, charucoIds)
 
             if charucoIds is not None and len(charucoCorners) > 10:
                 all_charuco_corners.append(charucoCorners)
                 all_charuco_ids.append(charucoIds)
+                objpoints.append(objpts)
+                imgpoints.append(imgpts)
     
     # Calibrate camera with extracted information
-    print(len(all_charuco_corners))
-    print(len(all_charuco_ids))
-
-    # TODO: change this to cv.fisheye.calibrate
-    # will need objpoints, imgpoints from the charuco function
-
-    # TODO: if it doesn't work, try the github repository found online
-    result, mtx, dist, rvecs, tvecs = cv2.aruco.calibrateCameraCharuco(all_charuco_corners, all_charuco_ids, board, shape, 
-                                                                       mtx, dist, 
-                                                                      None, None)
-    print(f"Error: {result}")
+    calibration_flags = cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC + cv2.fisheye.CALIB_CHECK_COND + cv2.fisheye.CALIB_FIX_SKEW
+    rms, mtx, dist, rvecs, tvecs = cv2.fisheye.calibrate(objpoints, imgpoints, shape, mtx, dist, flags=calibration_flags,
+        criteria=(cv2.TERM_CRITERIA_EPS+cv2.TERM_CRITERIA_MAX_ITER, 30, 1e-6))
+    print(f"Error: {rms}")
     return mtx, dist
 
-mtx, dist = get_calibration_parameters(img_dir='./charuco_images/adjacent_camera/charuco*.png')
-if (mtx is not None and dist is not None):
-    data = {"mtx": mtx.tolist(), "dist": dist.tolist()}
 
-    with open(OUTPUT_JSON, 'w') as json_file:
-        json.dump(data, json_file, indent=4)
+def write_calibration_parameters(img_dir, OUTPUT_JSON):
+    mtx, dist = get_calibration_parameters(img_dir)
+    if (mtx is not None and dist is not None):
+        data = {"mtx": mtx.tolist(), "dist": dist.tolist()}
 
-    print(f'Data has been saved to {OUTPUT_JSON}')
+        with open(OUTPUT_JSON, 'w') as json_file:
+            json.dump(data, json_file, indent=4)
+
+        print(f'Data has been saved to {OUTPUT_JSON}')
+
+
+def undistort_image(image, mtx, dst):
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    h,  w = image.shape[:2]
+    newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dst, (w,h), 1, (w,h))
+    undist = cv2.undistort(image, mtx, dst, None, newcameramtx)
+    return (newcameramtx, undist)

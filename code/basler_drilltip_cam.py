@@ -6,7 +6,7 @@ Tested on Basler acA1300-200uc (USB3, linux 64bit , python 3.5)
 from pypylon import pylon
 import cv2
 import numpy as np
-from chessboard_calibration import *
+from charuco_calibration import *
 import math
 
 def nothing(x):
@@ -52,12 +52,12 @@ def detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges,
     lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=line_thresh, minLineLength=minLineLength, maxLineGap=maxLineGap) 
 
     if lines is not None:
-        # Strategy: assume one of the two best lines is a tool edge
         if (len(lines) < 2):
             return None    # skip this frame if fewer than two lines were found 
     
-        for i in range(len(lines)-1):   
-            ax1, ay1, ax2, ay2 = lines[i][0]
+        for i in range(len(lines)-1):  
+            # Debugging 
+            # ax1, ay1, ax2, ay2 = lines[i][0]
             # cv2.line(edges, (ax1, ay1), (ax2, ay2), (255, 0, 0), 5)    
                 
             for j in range(i, len(lines)):
@@ -66,6 +66,7 @@ def detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges,
                 isParallel = checkParallel(line1, line2, parallelTolerance)
                 distBtwnEdges = distBetweenLines(line1, line2)
 
+                # Debugging:
                 print(f"is parallel: {isParallel}")
                 print(f"distBtwnEdges: {distBtwnEdges}")
 
@@ -92,7 +93,7 @@ def detectCircles(grayFrame, accumulatorRes, minDist, cannyThreshold, circAccThr
             if (pointOnLine(center, centralAxis[0], centralAxis[1], dispTolerance)):
                 return (center, radius)
 
-def main():
+def detectTip(calibration_filepath):
     # conecting to the first available camera
     camera = pylon.InstantCamera(pylon.TlFactory.GetInstance().CreateFirstDevice())
 
@@ -105,9 +106,7 @@ def main():
     converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
 
     # 1. Calibrate the Camera
-    # cameraMatrix, distCoeffs = returnCameraCoeffsFisheye()
-
-    json_file_path = './opposite_cam_calibration.json'
+    json_file_path = calibration_filepath
     with open(json_file_path, 'r') as file: # Read the JSON file
         json_data = json.load(file)
 
@@ -152,7 +151,7 @@ def main():
             color_image = image.GetArray()
 
             # undistort the image
-            new_K, color_image = undistortFisheye(cameraMatrix, distCoeffs, color_image)
+            new_K, color_image = undistort_image(color_image, cameraMatrix, distCoeffs)
             
             # 2. Preprocessing (Grayscale + Gaussian Blur)
             gray = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
@@ -221,7 +220,6 @@ def main():
 
                     # cv2.putText(color_image, f"Center (mm): ({worldCoords[0][0] :.2f}, {worldCoords[1][0]: .2f})", (70, 220), cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0, 255, 0), 3)
             
-
             # Show Result
             cv2.imshow(win_name, color_image)
             
@@ -233,4 +231,4 @@ def main():
                 camera.StopGrabbing()
                 cv2.destroyAllWindows()
 
-main()
+detectTip("adjacent_camera_calibration.json")

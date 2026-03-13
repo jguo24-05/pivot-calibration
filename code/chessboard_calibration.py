@@ -174,18 +174,7 @@ def undistortedNonFisheye(K, D, img):
 
 
 def undistortFisheye(K, D, img):
-    print("K")
-    print(K)
-
-    print("D")
-    print(D)
-
     new_K = cv.fisheye.estimateNewCameraMatrixForUndistortRectify(K, D, img.shape[:2], np.eye(3), balance=1.0)
-
-    print("new_K")
-    print(new_K)
-
-    # map1, map2 = cv.fisheye.initUndistortRectifyMap(K, D, np.eye(3), new_K, img.shape[:2], cv.CV_16SC2)
     undistorted_img = cv.fisheye.undistortImage(img, K, D, Knew = new_K)
     '''
     cv.imshow('window', img)
@@ -211,7 +200,7 @@ def calcWorldCoordinates(u, v, new_K, R_mtx, tvec):
 
 
 # For accessing the preexisting calibration parameters
-json_file_path = './jank_calibration.json'
+json_file_path = './adjacent_camera_calibration.json'
 with open(json_file_path, 'r') as file: # Read the JSON file
     json_data = json.load(file)
 
@@ -224,14 +213,18 @@ distCoeffs = np.array(json_data['dist'])
 # returnCameraCoeffsFisheye('./mostRecent_opposite/chessboard*.png', './opposite_cam_calibration.json')
 # returnCameraCoeffsFisheye('./adjacent_camera/chessboard*.png', './adjacent_cam_calibration.json')
 
-images = glob.glob('./charuco_images/charuco*.png')
+images = glob.glob('./charuco_images/adjacent_camera/charuco*.png')
 
 for i in range(len(images)):
     img = cv.imread(images[i])
-    # _, undist = undistortFisheye(cameraMatrix, distCoeffs, img)
     newCamMat = np.array((3,3))
     if (img is not None):
-        undist = cv.undistort(src=img, cameraMatrix=cameraMatrix, distCoeffs=distCoeffs)
+        image = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+
+        h,  w = image.shape[:2]
+        newcameramtx, roi = cv.getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, (w,h), 1, (w,h))
+        undist = cv.undistort(image, cameraMatrix, distCoeffs, None, newcameramtx)
+
         cv.imshow('window', undist)
         cv.waitKey(500)
 
