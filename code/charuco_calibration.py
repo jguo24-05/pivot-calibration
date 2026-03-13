@@ -9,16 +9,17 @@ SQUARES_HORIZONTALLY = 7             # Number of squares horizontally
 SQUARE_LENGTH = 30                   # Square side length (in pixels)
 MARKER_LENGTH = 24                   # ArUco marker side length (in pixels)
 MARGIN_PX = 0                       # Margins size (in pixels)
-OUTPUT_JSON = "./jank_calibration.json"
-
-
-# TODO: test out charuco calibration to see if rms is better
+OUTPUT_JSON = "./adjacent_camera_calibration.json"
 
 def get_calibration_parameters(img_dir):
     # Define the aruco dictionary, charuco board and detector
     dictionary = cv2.aruco.getPredefinedDictionary(ARUCO_DICT)
     board = cv2.aruco.CharucoBoard((SQUARES_VERTICALLY, SQUARES_HORIZONTALLY), SQUARE_LENGTH, MARKER_LENGTH, dictionary)
     params = cv2.aruco.DetectorParameters()
+    params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+    params.cornerRefinementMinAccuracy = 0.01
+    params.cornerRefinementMaxIterations = 100
+
     detector = cv2.aruco.ArucoDetector(dictionary, params)
     
     # Load images from directory
@@ -33,6 +34,9 @@ def get_calibration_parameters(img_dir):
     else:
         return (None, None)
     
+    mtx = np.zeros((3, 3))
+    dist = np.zeros((4, 1))
+    
     # Loop over images and extraction of corners
     for image_file in images:
         image = cv2.imread(image_file)
@@ -46,18 +50,25 @@ def get_calibration_parameters(img_dir):
             cv2.aruco.drawDetectedMarkers(image_copy, marker_corners, marker_ids)
             ret, charucoCorners, charucoIds = cv2.aruco.interpolateCornersCharuco(marker_corners, marker_ids, image, board) 
 
-            if charucoIds is not None and len(charucoCorners) > 3:
+            if charucoIds is not None and len(charucoCorners) > 10:
                 all_charuco_corners.append(charucoCorners)
                 all_charuco_ids.append(charucoIds)
     
     # Calibrate camera with extracted information
-    mtx = np.zeros((3, 3))
-    dist = np.zeros((4, 1))
-    result, mtx, dist, rvecs, tvecs = cv2.aruco.calibrateCameraCharuco(all_charuco_corners, all_charuco_ids, board, shape, mtx, dist, None, None)
+    print(len(all_charuco_corners))
+    print(len(all_charuco_ids))
+
+    # TODO: change this to cv.fisheye.calibrate
+    # will need objpoints, imgpoints from the charuco function
+
+    # TODO: if it doesn't work, try the github repository found online
+    result, mtx, dist, rvecs, tvecs = cv2.aruco.calibrateCameraCharuco(all_charuco_corners, all_charuco_ids, board, shape, 
+                                                                       mtx, dist, 
+                                                                      None, None)
     print(f"Error: {result}")
     return mtx, dist
 
-mtx, dist = get_calibration_parameters(img_dir='./charuco_images/charuco*.png')
+mtx, dist = get_calibration_parameters(img_dir='./charuco_images/adjacent_camera/charuco*.png')
 if (mtx is not None and dist is not None):
     data = {"mtx": mtx.tolist(), "dist": dist.tolist()}
 

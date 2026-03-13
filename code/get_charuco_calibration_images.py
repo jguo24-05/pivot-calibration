@@ -33,7 +33,7 @@ def main():
     numImages = 0
 
     while camera.IsGrabbing():
-        camera.ExposureTime.SetValue(5000)
+        camera.ExposureTime.SetValue(30000)
         grabResult = camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
 
         if grabResult.GrabSucceeded():
@@ -44,14 +44,14 @@ def main():
 
             marker_corners, marker_ids, _ = detector.detectMarkers(gray)
         
-            if len(marker_ids) > 0: # If at least one marker is detected
+            if marker_ids is not None and len(marker_ids) > 0: # If at least one marker is detected
                 _, charucoCorners, charucoIds = cv2.aruco.interpolateCornersCharuco(marker_corners, marker_ids, color_image, board)
 
-                if charucoIds is not None and len(charucoCorners) > 3:
-                    cv2.aruco.drawDetectedMarkers(color_image, marker_corners, marker_ids)
-                    cv2.imwrite(f'./charuco{numImages}.png', color_image)
+                if charucoIds is not None and len(charucoCorners) > 20:
+                    cv2.imwrite(f'./charuco_images/adjacent_camera/charuco{numImages}.png', color_image)
                     numImages += 1
-                    
+                    cv2.aruco.drawDetectedMarkers(color_image, marker_corners, marker_ids)
+                       
             cv2.imshow(win_name, color_image)
                 
 
