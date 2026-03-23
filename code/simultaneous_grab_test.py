@@ -1,11 +1,17 @@
 import pypylon.pylon as py
+from charuco_calibration import *
 import numpy as np
 import cv2
 import math
-
+import json
 
 def nothing(x):
     pass
+
+# TODO: refine line detection algorithm
+    # the tool edges are not perfectly parallel, so that check is not exclusive enough
+    # the distance between edges check can be refined to a smaller range, but there are other lines that fit this criteria
+    # are there better ways to find the tool edges?
 
 # Checks if two lines are parallel with the given tolerance
 def checkParallel(line1, line2, tolerance):
@@ -53,19 +59,17 @@ def detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges,
     
         for i in range(len(lines)-1):   
             ax1, ay1, ax2, ay2 = lines[i][0]
-            # cv2.line(edges, (ax1, ay1), (ax2, ay2), (255, 0, 0), 5)    
-                
+            cv2.line(edges, (ax1, ay1), (ax2, ay2), (255, 0, 0), 5)    
+            
             for j in range(i, len(lines)):
                 line1 = lines[i]
                 line2 = lines[j]
                 isParallel = checkParallel(line1, line2, parallelTolerance)
                 distBtwnEdges = distBetweenLines(line1, line2)
 
-                print(f"is parallel: {isParallel}")
-                print(f"distBtwnEdges: {distBtwnEdges}")
-
-                if (isParallel and distBtwnEdges > minDistBtwnEdges and distBtwnEdges < maxDistBtwnEdges):
-                    return (line1, line2)
+                if (isParallel):
+                    if (distBtwnEdges > minDistBtwnEdges and distBtwnEdges < maxDistBtwnEdges):
+                        return (line1, line2)
         
         return None     # no parallel lines were found this frame
 
@@ -101,11 +105,24 @@ def main():
     # Set the exposure time for each camera and store a unique 
     # number for each camera to identify the incoming images
     cam1 = cam_array[0]
-    cam1.ExposureTime.SetValue(30000)
+    cam1.ExposureTime.SetValue(300000)
     cam1.SetCameraContext(0)
     cam2 = cam_array[1]
-    cam2.ExposureTime.SetValue(30000)
+    cam2.ExposureTime.SetValue(300000)
     cam2.SetCameraContext(1)
+
+    # Camera Calibration
+    with open(f"./calibration_data/cam745_calibration.json", 'r') as file:
+        json_data = json.load(file)
+
+    cameraMatrix745 = np.array(json_data['mtx'])
+    distCoeffs745 = np.array(json_data['dist'])
+
+    with open(f"./calibration_data/cam746_calibration.json", 'r') as file:
+        json_data = json.load(file)
+
+    cameraMatrix746 = np.array(json_data['mtx'])
+    distCoeffs746 = np.array(json_data['dist'])
     
     # store last framecount in array
     frame_counts = [0]*NUM_CAMERAS
@@ -123,7 +140,7 @@ def main():
     # Accumulator Threshold for Lines
     cv2.createTrackbar('Line Accumulator Threshold', win_name, 100, 300, nothing);
     # Circle Radius Accumulator Threshold
-    cv2.createTrackbar('Circle Accumulator Threshold', win_name, 100, 300, nothing)
+    cv2.createTrackbar('Circle Accumulator Threshold', win_name, 10, 300, nothing)
     # Min Radius: Minimum circle radius to detect
     cv2.createTrackbar('Minimum Radius', win_name, 10, 100, nothing)
     # Max Radius: Maximum circle radius to detect
@@ -133,9 +150,9 @@ def main():
     # Maximum Line Gap: Maximum allowed gap in a line
     cv2.createTrackbar('Maximum Line Gap', win_name, 50, 250, nothing)
     # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Minimum Distance Between Edges', win_name, 5, 100, nothing)
+    cv2.createTrackbar('Minimum Distance Between Edges', win_name, 15, 50, nothing)
     # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Maximum Distance Between Edges', win_name, 10, 100, nothing)
+    cv2.createTrackbar('Maximum Distance Between Edges', win_name, 35, 100, nothing)
     # Tolerance for how far the radius can be from the detected central axis
     cv2.createTrackbar('Maximum Error for Tip and Axis Alignment', win_name, 25, 50, nothing)
 
@@ -147,7 +164,7 @@ def main():
     # Accumulator Threshold for Lines
     cv2.createTrackbar('Line Accumulator Threshold', win_name, 100, 300, nothing);
     # Circle Radius Accumulator Threshold
-    cv2.createTrackbar('Circle Accumulator Threshold', win_name, 100, 300, nothing)
+    cv2.createTrackbar('Circle Accumulator Threshold', win_name, 10, 300, nothing)
     # Min Radius: Minimum circle radius to detect
     cv2.createTrackbar('Minimum Radius', win_name, 10, 100, nothing)
     # Max Radius: Maximum circle radius to detect
@@ -157,9 +174,9 @@ def main():
     # Maximum Line Gap: Maximum allowed gap in a line
     cv2.createTrackbar('Maximum Line Gap', win_name, 50, 250, nothing)
     # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Minimum Distance Between Edges', win_name, 5, 100, nothing)
+    cv2.createTrackbar('Minimum Distance Between Edges', win_name, 15, 100, nothing)
     # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Maximum Distance Between Edges', win_name, 10, 100, nothing)
+    cv2.createTrackbar('Maximum Distance Between Edges', win_name, 35, 100, nothing)
     # Tolerance for how far the radius can be from the detected central axis
     cv2.createTrackbar('Maximum Error for Tip and Axis Alignment', win_name, 25, 50, nothing)
 
@@ -175,7 +192,11 @@ def main():
                 image = converter.Convert(res)
                 color_image = image.GetArray()
                 
-                # do something with the image ....
+                if (cam_id == 1):
+                    new_K, color_image = undistort_image(color_image, cameraMatrix745, distCoeffs745)
+                else:
+                    new_K, color_image = undistort_image(color_image, cameraMatrix746, distCoeffs746)
+
                 # 2. Preprocessing (Grayscale + Gaussian Blur)
                 gray = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
                 # Blur is crucial to reduce noise/specular highlights on metal surfaces

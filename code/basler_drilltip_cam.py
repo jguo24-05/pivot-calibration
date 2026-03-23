@@ -112,8 +112,6 @@ def detectTip(calibration_filepath):
 
     cameraMatrix = np.array(json_data['mtx'])
     distCoeffs = np.array(json_data['dist'])
-    objpoints = np.array(json_data['objpoints'], dtype=np.float32).reshape(-1, 1, 3)
-    imgpoints = np.array(json_data['imgpoints'], dtype=np.float32).reshape(-1, 1, 2)
 
     # 2. Initialize UI Window and Trackbars
     win_name = 'Drill 3D Pose Estimation'
@@ -135,14 +133,14 @@ def detectTip(calibration_filepath):
     # Maximum Line Gap: Maximum allowed gap in a line
     cv2.createTrackbar('Maximum Line Gap', win_name, 50, 250, nothing)
     # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Minimum Distance Between Edges', win_name, 5, 100, nothing)
+    cv2.createTrackbar('Minimum Distance Between Edges', win_name, 20, 40, nothing)
     # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Maximum Distance Between Edges', win_name, 10, 100, nothing)
+    cv2.createTrackbar('Maximum Distance Between Edges', win_name, 60, 80, nothing)
     # Tolerance for how far the radius can be from the detected central axis
     cv2.createTrackbar('Maximum Error for Tip and Axis Alignment', win_name, 25, 50, nothing)
 
     while camera.IsGrabbing():
-        camera.ExposureTime.SetValue(5000)
+        camera.ExposureTime.SetValue(300000)
         grabResult = camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
 
         if grabResult.GrabSucceeded():
@@ -174,7 +172,7 @@ def detectTip(calibration_filepath):
             cannyMinThreshold = 80;
             edges = cv2.Canny(blurred, cannyMinThreshold, cannyThreshold);
             
-            lineTuple = detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges, maxDistBtwnEdges, 10)    
+            lineTuple = detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges, maxDistBtwnEdges, 1)    
             if (lineTuple is not None):
                 line1 = lineTuple[0]
                 line2 = lineTuple[1]
@@ -231,4 +229,4 @@ def detectTip(calibration_filepath):
                 camera.StopGrabbing()
                 cv2.destroyAllWindows()
 
-detectTip("adjacent_camera_calibration.json")
+detectTip("./calibration_data/cam745_calibration.json")

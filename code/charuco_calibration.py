@@ -3,12 +3,23 @@ import numpy as np
 import json
 import glob
 
+'''
+to calibrate, call:
+
+mtx, dst = write_calibration_parameters('./charuco_images/746dump/charuco*.png', './cam746_calibration.json')
+images = glob.glob('./charuco_images/746dump/charuco*.png')
+for image_file in images:
+        image = cv2.imread(image_file)
+        if (image is not None):
+            new_K, _ = undistort_image(image, mtx, dst)
+'''
+
 ARUCO_DICT = cv2.aruco.DICT_4X4_50   # Dictionary ID
 SQUARES_VERTICALLY = 5               # Number of squares vertically
 SQUARES_HORIZONTALLY = 7             # Number of squares horizontally
 SQUARE_LENGTH = 30                   # Square side length (in pixels)
 MARKER_LENGTH = 24                   # ArUco marker side length (in pixels)
-MARGIN_PX = 0                       # Margins size (in pixels)
+MARGIN_PX = 0                        # Margins size (in pixels)
 
 def get_calibration_parameters(img_dir):
     # Define the aruco dictionary, charuco board and detector
@@ -26,18 +37,16 @@ def get_calibration_parameters(img_dir):
     all_charuco_ids = []
     all_charuco_corners = []
 
-    objpoints = [] # 3d point in real world space
-    imgpoints = [] # 2d points in image plane.'
-
     imgOne = cv2.imread(images[0])
     shape = np.empty((1, 2))
     if (imgOne is not None):
-        shape = imgOne.shape[:2]
+        h, w = imgOne.shape[:2]
+        shape = (w, h)
     else:
-        return (None, None)
+        return (None, None, None, None)
     
     mtx = np.zeros((3, 3))
-    dist = np.zeros((4, 1))
+    dst = np.zeros((4, 1))
     
     # Loop over images and extraction of corners
     for image_file in images:
@@ -46,29 +55,31 @@ def get_calibration_parameters(img_dir):
             continue
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         image_copy = image.copy()
-        marker_corners, marker_ids, rejectedCandidates = detector.detectMarkers(image)
+        marker_corners, marker_ids, _ = detector.detectMarkers(image)
         
-        if marker_ids is not None and len(marker_ids) > 0: # If at least one marker is detected
+        if marker_ids is not None and len(marker_ids) > 1: # If at least two markers are detected
             cv2.aruco.drawDetectedMarkers(image_copy, marker_corners, marker_ids)
-            ret, charucoCorners, charucoIds = cv2.aruco.interpolateCornersCharuco(marker_corners, marker_ids, image, board) 
-            objpts, imgpts = cv2.aruco.getBoardObjectAndImagePoints(board, charucoCorners, charucoIds)
-
+            _, charucoCorners, charucoIds = cv2.aruco.interpolateCornersCharuco(marker_corners, marker_ids, image, board) 
+           
             if charucoIds is not None and len(charucoCorners) > 10:
                 all_charuco_corners.append(charucoCorners)
                 all_charuco_ids.append(charucoIds)
-                objpoints.append(objpts)
-                imgpoints.append(imgpts)
     
     # Calibrate camera with extracted information
-    calibration_flags = cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC + cv2.fisheye.CALIB_CHECK_COND + cv2.fisheye.CALIB_FIX_SKEW
-    rms, mtx, dist, rvecs, tvecs = cv2.fisheye.calibrate(objpoints, imgpoints, shape, mtx, dist, flags=calibration_flags,
-        criteria=(cv2.TERM_CRITERIA_EPS+cv2.TERM_CRITERIA_MAX_ITER, 30, 1e-6))
-    print(f"Error: {rms}")
-    return mtx, dist
+    result, mtx, dst, rvecs, tvecs = cv2.aruco.calibrateCameraCharuco(
+        charucoCorners=all_charuco_corners, 
+        charucoIds=all_charuco_ids, 
+        board=board, 
+        imageSize=shape, 
+        cameraMatrix=mtx, 
+        distCoeffs=dst)
+    
+    print(f"Error: {result}")
+    return mtx, dst, rvecs, tvecs
 
 
 def write_calibration_parameters(img_dir, OUTPUT_JSON):
-    mtx, dist = get_calibration_parameters(img_dir)
+    mtx, dist, _, _ = get_calibration_parameters(img_dir)
     if (mtx is not None and dist is not None):
         data = {"mtx": mtx.tolist(), "dist": dist.tolist()}
 
@@ -76,11 +87,21 @@ def write_calibration_parameters(img_dir, OUTPUT_JSON):
             json.dump(data, json_file, indent=4)
 
         print(f'Data has been saved to {OUTPUT_JSON}')
+    return mtx, dist
 
 
-def undistort_image(image, mtx, dst):
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    h,  w = image.shape[:2]
-    newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dst, (w,h), 1, (w,h))
-    undist = cv2.undistort(image, mtx, dst, None, newcameramtx)
-    return (newcameramtx, undist)
+def undistort_image(img, mtx, dst):
+    h,  w = img.shape[:2]
+    newcam_mtx, roi=cv2.getOptimalNewCameraMatrix(mtx, dst, (w,h), 1, (w,h))
+    undist = cv2.undistort(img, mtx, dst, None, newcam_mtx)
+
+    # crop the image
+    x, y, w, h = roi
+    undist = undist[y:y+h, x:x+w]
+    '''
+    cv2.imshow('window', img)
+    cv2.waitKey(0)
+    cv2.imshow('window', undist)
+    cv2.waitKey(0)
+    '''
+    return newcam_mtx, undist
