@@ -69,7 +69,12 @@ def detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges,
                 # Debugging:
                 print(f"is parallel: {isParallel}")
                 print(f"distBtwnEdges: {distBtwnEdges}")
-
+                
+                if (isParallel):
+                    ax1, ay1, ax2, ay2 = line1[0]
+                    cv2.line(edges, (ax1, ay1), (ax2, ay2), (255, 0, 0), 5)    
+                    bx1, by1, bx2, by2 = line2[0]
+                    cv2.line(edges, (bx1, by1), (bx2, by2), (255, 0, 0), 5) 
                 if (isParallel and distBtwnEdges > minDistBtwnEdges and distBtwnEdges < maxDistBtwnEdges):
                     return (line1, line2)
         
@@ -172,7 +177,7 @@ def detectTip(calibration_filepath):
             cannyMinThreshold = 80;
             edges = cv2.Canny(blurred, cannyMinThreshold, cannyThreshold);
             
-            lineTuple = detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges, maxDistBtwnEdges, 1)    
+            lineTuple = detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges, maxDistBtwnEdges, 2)    
             if (lineTuple is not None):
                 line1 = lineTuple[0]
                 line2 = lineTuple[1]

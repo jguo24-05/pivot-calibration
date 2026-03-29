@@ -17,9 +17,11 @@ for image_file in images:
 ARUCO_DICT = cv2.aruco.DICT_4X4_50   # Dictionary ID
 SQUARES_VERTICALLY = 5               # Number of squares vertically
 SQUARES_HORIZONTALLY = 7             # Number of squares horizontally
-SQUARE_LENGTH = 30                   # Square side length (in pixels)
-MARKER_LENGTH = 24                   # ArUco marker side length (in pixels)
+SQUARE_LENGTH = 101                   # Square side length (in pixels)
+MARKER_LENGTH = 70                   # ArUco marker side length (in pixels)
 MARGIN_PX = 0                        # Margins size (in pixels)
+
+# TODO: try with newer API calls? (commented out)
 
 def get_calibration_parameters(img_dir):
     # Define the aruco dictionary, charuco board and detector
@@ -31,6 +33,7 @@ def get_calibration_parameters(img_dir):
     params.cornerRefinementMaxIterations = 100
 
     detector = cv2.aruco.ArucoDetector(dictionary, params)
+    # detector = cv2.aruco.CharucoDetector(board)
     
     # Load images from directory
     images = glob.glob(img_dir)
@@ -55,24 +58,27 @@ def get_calibration_parameters(img_dir):
             continue
         image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         image_copy = image.copy()
+        # charuco_corners, charuco_ids, marker_corners, marker_ids = detector.detectBoard(image)
         marker_corners, marker_ids, _ = detector.detectMarkers(image)
         
         if marker_ids is not None and len(marker_ids) > 1: # If at least two markers are detected
             cv2.aruco.drawDetectedMarkers(image_copy, marker_corners, marker_ids)
-            _, charucoCorners, charucoIds = cv2.aruco.interpolateCornersCharuco(marker_corners, marker_ids, image, board) 
-           
-            if charucoIds is not None and len(charucoCorners) > 10:
-                all_charuco_corners.append(charucoCorners)
-                all_charuco_ids.append(charucoIds)
+            _, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(marker_corners, marker_ids, image, board) 
+            
+            if charuco_ids is not None and len(charuco_corners) > 10:
+                all_charuco_corners.append(charuco_corners)
+                all_charuco_ids.append(charuco_ids)
     
     # Calibrate camera with extracted information
+    flags = cv2.CALIB_RATIONAL_MODEL
     result, mtx, dst, rvecs, tvecs = cv2.aruco.calibrateCameraCharuco(
         charucoCorners=all_charuco_corners, 
         charucoIds=all_charuco_ids, 
         board=board, 
         imageSize=shape, 
         cameraMatrix=mtx, 
-        distCoeffs=dst)
+        distCoeffs=dst,
+        flags=flags)
     
     print(f"Error: {result}")
     return mtx, dst, rvecs, tvecs

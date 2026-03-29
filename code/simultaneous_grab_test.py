@@ -8,18 +8,19 @@ import json
 def nothing(x):
     pass
 
-# TODO: refine line detection algorithm
-    # the tool edges are not perfectly parallel, so that check is not exclusive enough
-    # the distance between edges check can be refined to a smaller range, but there are other lines that fit this criteria
-    # are there better ways to find the tool edges?
+# TODO: refine hough circles to be more accomodating
+# Note: top-down lighting from a little far away worked well on 3/29
 
 # Checks if two lines are parallel with the given tolerance
 def checkParallel(line1, line2, tolerance):
+    eps = 10**-3
     x1, y1, x2, y2 = line1[0]
     u1, v1, u2, v2 = line2[0]
-    if (x2 - x1 == 0 and u2 - u1 == 0): return True
-    elif (x2 - x1 == 0 or u2 - u1 == 0): return False
-    return abs(((y2 - y1) / (x2 - x1)) - ((v2 - v1) / (u2 - u1))) < tolerance
+    if (abs(x2 - x1) < eps and abs(u2 - u1) < eps): return True
+    elif (abs(x2 - x1) < eps or abs(u2 - u1) < eps): return False
+    m1 = (y2 - y1) / (x2 - x1)
+    m2 = (v2 - v1) / (u2 - u1)
+    return abs(m1-m2) < tolerance
     
    
 # Checks if point is on the line defined by (endpoint1, endpoint2) with the given tolerance
@@ -35,44 +36,75 @@ def pointOnLine(point, endpoint1, endpoint2, tolerance):
 
 # Returns the distance between two lines
 def distBetweenLines(line1, line2): # assumes parallel lines
+    eps = 10**-3
     ax1, ax2, ay1, ay2 = line1[0]
     bx1, bx2, by1, by2 = line2[0]
-    if (ax2-ax1 == 0):              # vertical line
-        return bx1-ax1
-    elif (ay2-ay1 == 0):            # horizontal line
-        return by1-ay1
+    if (abs(ax2-ax1) < eps):              # vertical line
+        return abs(bx1-ax1)
+    elif (abs(ay2-ay1) < eps):            # horizontal line
+        return abs(by1-ay1)
     else:
         m = (ay2-ay1) / float((ax2-ax1))
         c1 = ay1 - m*ax1
         c2 = by1 - m*bx1
         return (abs(c2 - c1)) / ((1 + pow(m, 2))**0.5)
+    
+    
+def angleBetweenLines(line1, line2):
+    eps = 10**-3
+    ax1, ax2, ay1, ay2 = line1[0]
+    bx1, bx2, by1, by2 = line2[0]
+
+    if (abs(ax2-ax1) < eps and abs(bx2-bx1) < eps): return 0
+    elif (abs(ax2-ax1) < eps or abs(bx2-bx1) < eps): return math.pi/2   # arbitrary large value
+
+    m1 = (ay2-ay1) / (ax2-ax1)
+    m2 = (by2-by1) / (bx2-bx1)
+    norm1 = (1 + pow(m1, 2))**0.5
+    norm2 = (1 + pow(m2, 2))**0.5
+
+    cosTheta = (1 + m1*m2) / (norm1*norm2)
+    return math.acos(cosTheta)
 
 
 # Detect lines using Probabilistic Hough Transform
-def detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges, maxDistBtwnEdges, parallelTolerance):
+def detectLines(color_image, edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges, maxDistBtwnEdges, parallelTolerance):
     lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=line_thresh, minLineLength=minLineLength, maxLineGap=maxLineGap) 
 
     if lines is not None:
-        # Strategy: assume one of the two best lines is a tool edge
         if (len(lines) < 2):
             return None    # skip this frame if fewer than two lines were found 
     
-        for i in range(len(lines)-1):   
-            ax1, ay1, ax2, ay2 = lines[i][0]
-            cv2.line(edges, (ax1, ay1), (ax2, ay2), (255, 0, 0), 5)    
-            
+        for i in range(len(lines)-1):  
+            # Debugging 
+            # ax1, ay1, ax2, ay2 = lines[i][0]
+            # cv2.line(edges, (ax1, ay1), (ax2, ay2), (255, 0, 0), 5)    
+                
             for j in range(i, len(lines)):
                 line1 = lines[i]
                 line2 = lines[j]
                 isParallel = checkParallel(line1, line2, parallelTolerance)
                 distBtwnEdges = distBetweenLines(line1, line2)
-
+                
                 if (isParallel):
+
+                    ax1, ay1, ax2, ay2 = line1[0]
+                    cv2.line(color_image, (ax1, ay1), (ax2, ay2), (255, 255, 120), 5)    
+                    bx1, by1, bx2, by2 = line2[0]
+                    cv2.line(edges, (bx1, by1), (bx2, by2), (255, 120, 255), 5) 
+
                     if (distBtwnEdges > minDistBtwnEdges and distBtwnEdges < maxDistBtwnEdges):
                         return (line1, line2)
         
+                    '''
+                    ax1, ay1, ax2, ay2 = line1[0]
+                    cv2.line(color_image, (ax1, ay1), (ax2, ay2), (255, 255, 120), 5)    
+                    bx1, by1, bx2, by2 = line2[0]
+                    cv2.line(edges, (bx1, by1), (bx2, by2), (255, 120, 255), 5) 
+                    if (isParallel):
+                        return (line1, line2)
+                    '''
         return None     # no parallel lines were found this frame
-
 
 # Detect circles that lie on the given centralAxis
 def detectCircles(grayFrame, accumulatorRes, minDist, cannyThreshold, circAccThreshold, minRadius, maxRadius, centralAxis, dispTolerance):
@@ -136,13 +168,13 @@ def main():
     cv2.resizeWindow("Window 1", 800, 650)
     win_name = "Window 1"
 
-    cv2.createTrackbar('Canny Threshold', win_name, 100, 300, nothing);
+    cv2.createTrackbar('Canny Threshold', win_name, 80, 300, nothing);
     # Accumulator Threshold for Lines
     cv2.createTrackbar('Line Accumulator Threshold', win_name, 100, 300, nothing);
     # Circle Radius Accumulator Threshold
     cv2.createTrackbar('Circle Accumulator Threshold', win_name, 10, 300, nothing)
     # Min Radius: Minimum circle radius to detect
-    cv2.createTrackbar('Minimum Radius', win_name, 10, 100, nothing)
+    cv2.createTrackbar('Minimum Radius', win_name, 50, 100, nothing)
     # Max Radius: Maximum circle radius to detect
     cv2.createTrackbar('Maximum Radius', win_name, 200, 500, nothing)
     # Minimum Line Length: Minimum line length to detect
@@ -150,9 +182,9 @@ def main():
     # Maximum Line Gap: Maximum allowed gap in a line
     cv2.createTrackbar('Maximum Line Gap', win_name, 50, 250, nothing)
     # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Minimum Distance Between Edges', win_name, 15, 50, nothing)
+    cv2.createTrackbar('Minimum Distance Between Edges', win_name, 30, 75, nothing)
     # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Maximum Distance Between Edges', win_name, 35, 100, nothing)
+    cv2.createTrackbar('Maximum Distance Between Edges', win_name, 100, 200, nothing)
     # Tolerance for how far the radius can be from the detected central axis
     cv2.createTrackbar('Maximum Error for Tip and Axis Alignment', win_name, 25, 50, nothing)
 
@@ -160,13 +192,13 @@ def main():
     cv2.resizeWindow("Window 2", 800, 650)
     win_name = "Window 2"
 
-    cv2.createTrackbar('Canny Threshold', win_name, 100, 300, nothing);
+    cv2.createTrackbar('Canny Threshold', win_name, 80, 300, nothing);
     # Accumulator Threshold for Lines
     cv2.createTrackbar('Line Accumulator Threshold', win_name, 100, 300, nothing);
     # Circle Radius Accumulator Threshold
     cv2.createTrackbar('Circle Accumulator Threshold', win_name, 10, 300, nothing)
     # Min Radius: Minimum circle radius to detect
-    cv2.createTrackbar('Minimum Radius', win_name, 10, 100, nothing)
+    cv2.createTrackbar('Minimum Radius', win_name, 50, 100, nothing)
     # Max Radius: Maximum circle radius to detect
     cv2.createTrackbar('Maximum Radius', win_name, 200, 500, nothing)
     # Minimum Line Length: Minimum line length to detect
@@ -174,9 +206,9 @@ def main():
     # Maximum Line Gap: Maximum allowed gap in a line
     cv2.createTrackbar('Maximum Line Gap', win_name, 50, 250, nothing)
     # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Minimum Distance Between Edges', win_name, 15, 100, nothing)
+    cv2.createTrackbar('Minimum Distance Between Edges', win_name, 30, 75, nothing)
     # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Maximum Distance Between Edges', win_name, 35, 100, nothing)
+    cv2.createTrackbar('Maximum Distance Between Edges', win_name, 100, 200, nothing)
     # Tolerance for how far the radius can be from the detected central axis
     cv2.createTrackbar('Maximum Error for Tip and Axis Alignment', win_name, 25, 50, nothing)
 
@@ -222,7 +254,7 @@ def main():
                 cannyMinThreshold = 80;
                 edges = cv2.Canny(blurred, cannyMinThreshold, cannyThreshold);
                 
-                lineTuple = detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges, maxDistBtwnEdges, 10)    
+                lineTuple = detectLines(color_image, edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges, maxDistBtwnEdges, 3)    
                 if (lineTuple is not None):
                     line1 = lineTuple[0]
                     line2 = lineTuple[1]
