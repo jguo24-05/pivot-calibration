@@ -3,11 +3,18 @@ import numpy as np
 import json
 import glob
 
+# TODO: (before project end)
+# Improve the reprojection error. 1.23 currently.
+# Calibration images are pretty good currently, but some images have soft spots.
+# See charuco_images folder/*dump.
+
+# TODO: measure the length of a square
+
 '''
 to calibrate, call:
 
-mtx, dst = write_calibration_parameters('./charuco_images/746dump/charuco*.png', './cam746_calibration.json')
-images = glob.glob('./charuco_images/746dump/charuco*.png')
+mtx, dst = write_calibration_parameters('./charuco_images/745dump/charuco*.png', './calibration_data/cam745_calibration.json')
+images = glob.glob('./charuco_images/745dump/charuco*.png')
 for image_file in images:
         image = cv2.imread(image_file)
         if (image is not None):
@@ -17,9 +24,9 @@ for image_file in images:
 ARUCO_DICT = cv2.aruco.DICT_4X4_50   # Dictionary ID
 SQUARES_VERTICALLY = 5               # Number of squares vertically
 SQUARES_HORIZONTALLY = 7             # Number of squares horizontally
-SQUARE_LENGTH = 101                   # Square side length (in pixels)
-MARKER_LENGTH = 70                   # ArUco marker side length (in pixels)
-MARGIN_PX = 0                        # Margins size (in pixels)
+SQUARE_LENGTH = 1                    # Square side length (in arbitrary unit u)
+MARKER_LENGTH = 0.7                  # ArUco marker side length (in u)
+MARGIN_PX = 0                        # Margins size (in u)
 
 # TODO: try with newer API calls? (commented out)
 
@@ -79,15 +86,18 @@ def get_calibration_parameters(img_dir):
         cameraMatrix=mtx, 
         distCoeffs=dst,
         flags=flags)
+    newcam_mtx, _=cv2.getOptimalNewCameraMatrix(mtx, dst, (w,h), 1, (w,h))
     
     print(f"Error: {result}")
-    return mtx, dst, rvecs, tvecs
+    return (mtx, dst, rvecs, tvecs, newcam_mtx)
 
 
 def write_calibration_parameters(img_dir, OUTPUT_JSON):
-    mtx, dist, _, _ = get_calibration_parameters(img_dir)
+    (mtx, dist, rvecs, tvecs, newcam_mtx) = get_calibration_parameters(img_dir) # type: ignore
     if (mtx is not None and dist is not None):
-        data = {"mtx": mtx.tolist(), "dist": dist.tolist()}
+        data = {"mtx": mtx.tolist(), 
+                "dist": dist.tolist(),
+                "newcam_mtx":newcam_mtx.tolist()}
 
         with open(OUTPUT_JSON, 'w') as json_file:
             json.dump(data, json_file, indent=4)

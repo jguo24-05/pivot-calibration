@@ -4,21 +4,17 @@ import numpy as np
 import cv2
 import json
 
-ARUCO_DICT = cv2.aruco.DICT_4X4_50   # Dictionary ID
-SQUARES_VERTICALLY = 5               # Number of squares vertically
-SQUARES_HORIZONTALLY = 7             # Number of squares horizontally
-SQUARE_LENGTH = 30                   # Square side length (in pixels)
-MARKER_LENGTH = 24                   # ArUco marker side length (in pixels)
-MARGIN_PX = 0                       # Margins size (in pixels)
+#criteria used by checkerboard pattern detector.
+#Change this if the code can't find the checkerboard
+criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+ 
+rows = 7 #number of internal corners in a chessboard row
+columns = 10 #number of checkerboard columns.
+world_scaling = 1. #change this to the real world square size. Or not.
+calib_flags = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE   
 
 
 def getCalibrationImages(filepath1, filepath2):
-    CHECKERBOARD = (4,5)
-    dictionary = cv2.aruco.getPredefinedDictionary(ARUCO_DICT)
-    board = cv2.aruco.CharucoBoard((SQUARES_VERTICALLY, SQUARES_HORIZONTALLY), SQUARE_LENGTH, MARKER_LENGTH, dictionary)
-    params = cv2.aruco.DetectorParameters()
-    detector = cv2.aruco.ArucoDetector(dictionary, params) 
-
     NUM_CAMERAS = 2
     tlf = py.TlFactory.GetInstance()
     
@@ -71,10 +67,6 @@ def getCalibrationImages(filepath1, filepath2):
                 cam_id = res.GetCameraContext()
                 frame_counts[cam_id] = img_nr
 
-                win_name = 'Window 1'
-                if (cam_id == 1):
-                    win_name = 'Window 2'
-
                 # Access the image data
                 image = converter.Convert(res)
                 color_image = image.GetArray()
@@ -86,25 +78,23 @@ def getCalibrationImages(filepath1, filepath2):
                     _, color_image = undistort_image(color_image, cameraMatrix746, distCoeffs745)
 
                 gray = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
-                marker_corners, marker_ids, _ = detector.detectMarkers(gray)
-        
-                if marker_ids is not None and len(marker_ids) > 1: # If at least two markers are detected
-                    _, charucoCorners, charucoIds = cv2.aruco.interpolateCornersCharuco(marker_corners, marker_ids, color_image, board)
 
-                    if charucoIds is not None and len(charucoCorners) > 10:
-                        img_copy = color_image.copy()
-                        cv2.aruco.drawDetectedMarkers(color_image, marker_corners, marker_ids)
-                        cv2.drawChessboardCorners(color_image, CHECKERBOARD, charucoCorners, True)
+                #find the checkerboard
+                ret, corners = cv2.findChessboardCorners(gray, (rows, columns), flags = calib_flags)
+            
+                if ret == True:
+                    img_copy = color_image.copy()
+                    cv2.drawChessboardCorners(color_image, (rows,columns), corners, ret)
 
-                        key = cv2.waitKey(1) & 0xFF
-                        if (currentCam_id == cam_id and key == ord('s')):
-                            if (currentCam_id == 0):
-                                cv2.imwrite(f'{filepath1}/charuco{imageCounter//2}.png', img_copy)
-                                currentCam_id = 1
-                            else:
-                                cv2.imwrite(f'{filepath2}/charuco{imageCounter//2}.png', img_copy)
-                                currentCam_id = 0
-                            imageCounter += 1
+                    key = cv2.waitKey(1) & 0xFF
+                    if (currentCam_id == cam_id and key == ord('s')):
+                        if (currentCam_id == 0):
+                            cv2.imwrite(f'{filepath1}/charuco{imageCounter//2}.png', img_copy)
+                            currentCam_id = 1
+                        else:
+                            cv2.imwrite(f'{filepath2}/charuco{imageCounter//2}.png', img_copy)
+                            currentCam_id = 0
+                        imageCounter += 1
 
                 if (cam_id == 0):
                     cv2.imshow('Window 1', color_image)
@@ -118,5 +108,6 @@ def getCalibrationImages(filepath1, filepath2):
                     
     cam_array.StopGrabbing()
     cam_array.Close()
+
 
 getCalibrationImages("./charuco_images/external_745", "./charuco_images/external_746")

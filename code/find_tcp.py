@@ -1,19 +1,20 @@
 import pypylon.pylon as py
 from charuco_calibration import *
+from stereo_calibration import *
 import numpy as np
 import cv2
 import math
 import json
 
-def nothing(x):
-    pass
 
-# TODO: refine hough circles to be more accomodating
-# Note: top-down lighting from a little far away worked well on 3/29
+# TODO: refine hough circles to be more accomodating (currently trying hough_circles_alt)
+# Note: top-down lighting from a little far away worked (on 3/29)
 
+
+######################### GEOMETRIC HELPERS #########################
 # Checks if two lines are parallel with the given tolerance
 def checkParallel(line1, line2, tolerance):
-    eps = 10**-3
+    eps = 10**-6
     x1, y1, x2, y2 = line1[0]
     u1, v1, u2, v2 = line2[0]
     if (abs(x2 - x1) < eps and abs(u2 - u1) < eps): return True
@@ -87,7 +88,8 @@ def detectLines(color_image, edges, line_thresh, minLineLength, maxLineGap, minD
                 distBtwnEdges = distBetweenLines(line1, line2)
                 
                 if (isParallel):
-
+                    
+                    # Debugging - pale blue lines mean parallel but not within distance range
                     ax1, ay1, ax2, ay2 = line1[0]
                     cv2.line(color_image, (ax1, ay1), (ax2, ay2), (255, 255, 120), 5)    
                     bx1, by1, bx2, by2 = line2[0]
@@ -96,22 +98,15 @@ def detectLines(color_image, edges, line_thresh, minLineLength, maxLineGap, minD
                     if (distBtwnEdges > minDistBtwnEdges and distBtwnEdges < maxDistBtwnEdges):
                         return (line1, line2)
         
-                    '''
-                    ax1, ay1, ax2, ay2 = line1[0]
-                    cv2.line(color_image, (ax1, ay1), (ax2, ay2), (255, 255, 120), 5)    
-                    bx1, by1, bx2, by2 = line2[0]
-                    cv2.line(edges, (bx1, by1), (bx2, by2), (255, 120, 255), 5) 
-                    if (isParallel):
-                        return (line1, line2)
-                    '''
         return None     # no parallel lines were found this frame
+
 
 # Detect circles that lie on the given centralAxis
 def detectCircles(grayFrame, accumulatorRes, minDist, cannyThreshold, circAccThreshold, minRadius, maxRadius, centralAxis, dispTolerance):
     # Detect circles with the Hough transform
-    circles = cv2.HoughCircles(grayFrame, cv2.HOUGH_GRADIENT, 
-                            dp = accumulatorRes, minDist = minDist, param1 = cannyThreshold, 
-                            param2 = circAccThreshold, minRadius = minRadius, 
+    circles = cv2.HoughCircles(grayFrame, cv2.HOUGH_GRADIENT_ALT, 
+                            dp = accumulatorRes, minDist = minDist, param1 = 300,   # for hough_gradient_alt 
+                            param2 = 0.5, minRadius = minRadius, 
                             maxRadius = maxRadius);
 
     if not (circles is None):
@@ -123,7 +118,9 @@ def detectCircles(grayFrame, accumulatorRes, minDist, cannyThreshold, circAccThr
             if (pointOnLine(center, centralAxis[0], centralAxis[1], dispTolerance)):
                 return (center, radius)
 
-def main():
+
+######################### DETECTION LOOP #########################
+def findTCP():
     NUM_CAMERAS = 2
     tlf = py.TlFactory.GetInstance()
     
@@ -168,49 +165,101 @@ def main():
     cv2.resizeWindow("Window 1", 800, 650)
     win_name = "Window 1"
 
-    cv2.createTrackbar('Canny Threshold', win_name, 80, 300, nothing);
+    # Canny Threshold
+    cannyThreshMin = 80
+    cannyThreshMax = 300
+    # Line Accumulator Matrix
+    lineAccMin = 100
+    lineAccMax = 300
+    # Circle Accumulator Matrix (superfluous if hough_gradient_alt)
+    circleAccMin = 10
+    circleAccMax = 300
+    # Minimum circle radius
+    minRadiusMin = 50
+    minRadiusMax = 100
+    # Maximum circle radius
+    maxRadiusMin = 200
+    maxRadiusMax = 300
+    # Minimum line length
+    minLineMin = 10
+    minLineMax = 100
+    # Maximum line gap
+    maxLineMin = 50
+    maxLineMax = 250
+    # Minimum distance between edges
+    minDistMin = 30
+    minDistMax = 75
+    # Maximum distance between edges
+    maxDistMin = 100
+    maxDistMax = 200
+    # Error for tip and axis alignment
+    errorMin = 25
+    errorMax = 50
+
+    cv2.createTrackbar('Canny Threshold', win_name, cannyThreshMin, cannyThreshMax, lambda a: None);
     # Accumulator Threshold for Lines
-    cv2.createTrackbar('Line Accumulator Threshold', win_name, 100, 300, nothing);
+    cv2.createTrackbar('Line Accumulator Threshold', win_name, lineAccMin, lineAccMax, lambda a: None);
     # Circle Radius Accumulator Threshold
-    cv2.createTrackbar('Circle Accumulator Threshold', win_name, 10, 300, nothing)
+    cv2.createTrackbar('Circle Accumulator Threshold', win_name, circleAccMin, circleAccMax, lambda a: None)
     # Min Radius: Minimum circle radius to detect
-    cv2.createTrackbar('Minimum Radius', win_name, 50, 100, nothing)
+    cv2.createTrackbar('Minimum Radius', win_name, minRadiusMin, minRadiusMax, lambda a: None)
     # Max Radius: Maximum circle radius to detect
-    cv2.createTrackbar('Maximum Radius', win_name, 200, 500, nothing)
+    cv2.createTrackbar('Maximum Radius', win_name, maxRadiusMin, maxRadiusMax, lambda a: None)
     # Minimum Line Length: Minimum line length to detect
-    cv2.createTrackbar('Minimum Line Length', win_name, 10, 100, nothing)
+    cv2.createTrackbar('Minimum Line Length', win_name, minLineMin, minLineMax, lambda a: None)
     # Maximum Line Gap: Maximum allowed gap in a line
-    cv2.createTrackbar('Maximum Line Gap', win_name, 50, 250, nothing)
+    cv2.createTrackbar('Maximum Line Gap', win_name, maxLineMin, maxLineMax, lambda a: None)
     # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Minimum Distance Between Edges', win_name, 30, 75, nothing)
+    cv2.createTrackbar('Minimum Distance Between Edges', win_name, minDistMin, minDistMax, lambda a: None)
     # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Maximum Distance Between Edges', win_name, 100, 200, nothing)
+    cv2.createTrackbar('Maximum Distance Between Edges', win_name, maxDistMin, maxDistMax, lambda a: None)
     # Tolerance for how far the radius can be from the detected central axis
-    cv2.createTrackbar('Maximum Error for Tip and Axis Alignment', win_name, 25, 50, nothing)
+    cv2.createTrackbar('Maximum Error for Tip and Axis Alignment', win_name, errorMin, errorMax, lambda a: None)
 
     cv2.namedWindow("Window 2", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("Window 2", 800, 650)
     win_name = "Window 2"
 
-    cv2.createTrackbar('Canny Threshold', win_name, 80, 300, nothing);
+    cv2.createTrackbar('Canny Threshold', win_name, cannyThreshMin, cannyThreshMax, lambda a: None);
     # Accumulator Threshold for Lines
-    cv2.createTrackbar('Line Accumulator Threshold', win_name, 100, 300, nothing);
+    cv2.createTrackbar('Line Accumulator Threshold', win_name, lineAccMin, lineAccMax, lambda a: None);
     # Circle Radius Accumulator Threshold
-    cv2.createTrackbar('Circle Accumulator Threshold', win_name, 10, 300, nothing)
+    cv2.createTrackbar('Circle Accumulator Threshold', win_name, circleAccMin, circleAccMax, lambda a: None)
     # Min Radius: Minimum circle radius to detect
-    cv2.createTrackbar('Minimum Radius', win_name, 50, 100, nothing)
+    cv2.createTrackbar('Minimum Radius', win_name, minRadiusMin, minRadiusMax, lambda a: None)
     # Max Radius: Maximum circle radius to detect
-    cv2.createTrackbar('Maximum Radius', win_name, 200, 500, nothing)
+    cv2.createTrackbar('Maximum Radius', win_name, maxRadiusMin, maxRadiusMax, lambda a: None)
     # Minimum Line Length: Minimum line length to detect
-    cv2.createTrackbar('Minimum Line Length', win_name, 10, 100, nothing)
+    cv2.createTrackbar('Minimum Line Length', win_name, minLineMin, minLineMax, lambda a: None)
     # Maximum Line Gap: Maximum allowed gap in a line
-    cv2.createTrackbar('Maximum Line Gap', win_name, 50, 250, nothing)
+    cv2.createTrackbar('Maximum Line Gap', win_name, maxLineMin, maxLineMax, lambda a: None)
     # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Minimum Distance Between Edges', win_name, 30, 75, nothing)
+    cv2.createTrackbar('Minimum Distance Between Edges', win_name, minDistMin, minDistMax, lambda a: None)
     # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Maximum Distance Between Edges', win_name, 100, 200, nothing)
+    cv2.createTrackbar('Maximum Distance Between Edges', win_name, maxDistMin, maxDistMax, lambda a: None)
     # Tolerance for how far the radius can be from the detected central axis
-    cv2.createTrackbar('Maximum Error for Tip and Axis Alignment', win_name, 25, 50, nothing)
+    cv2.createTrackbar('Maximum Error for Tip and Axis Alignment', win_name, errorMin, errorMax, lambda a: None)
+
+    # Detect the tool center point
+    (points745, points746) = runDetection(win_name, 
+                                          cam_array, frame_counts, converter, 
+                                          cameraMatrix745, distCoeffs745, 
+                                          cameraMatrix746, distCoeffs746)
+    
+    # Calculate its 3D position relative to the camera
+    worldCoordinates = []
+    if (points745 is not None):
+        worldPoint = grab3DPoints("./calibration_data/external_parameters.json", points745, points746)
+        worldCoordinates.append(worldPoint)
+
+    return worldCoordinates
+
+
+# Runs the main loop until the TCP is detected by both cameras (loop broken with 'q' key)
+def runDetection(win_name, cam_array, frame_counts, converter, cameraMatrix745, distCoeffs745, cameraMatrix746, distCoeffs746):
+    currCam_id = 0
+    points745 = np.array
+    points746 = np.array
 
     cam_array.StartGrabbing()
     while True:
@@ -251,10 +300,18 @@ def main():
                 dispTolerance = cv2.getTrackbarPos('Maximum Error for Tip and Axis Alignment', win_name)
 
                 # 3. Detect Drill Tip Handle Edges with Hough Probabilistic Transform 
-                cannyMinThreshold = 80;
+                cannyMinThreshold = 50;
                 edges = cv2.Canny(blurred, cannyMinThreshold, cannyThreshold);
                 
-                lineTuple = detectLines(color_image, edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges, maxDistBtwnEdges, 3)    
+                lineTuple = detectLines(color_image, 
+                                        edges, 
+                                        line_thresh, 
+                                        minLineLength, 
+                                        maxLineGap, 
+                                        minDistBtwnEdges, 
+                                        maxDistBtwnEdges, 
+                                        4)    # Allowed deviation between slopes
+                
                 if (lineTuple is not None):
                     line1 = lineTuple[0]
                     line2 = lineTuple[1]
@@ -275,12 +332,31 @@ def main():
                     accumulatorRes = 1     
                     minDist = 2000;             
 
-                    circle = detectCircles(blurred, accumulatorRes, minDist, cannyThreshold, circ_thresh, minRadius, maxRadius, centralAxis, dispTolerance)
+                    circle = detectCircles(blurred, 
+                                           accumulatorRes, 
+                                           minDist, 
+                                           cannyThreshold, 
+                                           circ_thresh, 
+                                           minRadius, 
+                                           maxRadius, 
+                                           centralAxis, 
+                                           dispTolerance)
+                    
                     if not (circle is None):
                         center = circle[0]
                         radius = circle[1]
                         center_x = center[0]
                         center_y = center[1]
+
+                        if (currCam_id == 0):
+                            points745 = np.transpose(np.array(center_x, center_y))
+                            currCam_id = 1
+                        else:
+                            points746 = np.transpose(np.array(center_x, center_y))
+
+                            cam_array.StopGrabbing()
+                            cam_array.Close()
+                            return (points745, points746)
 
                         micronsOverPixels = 1000/radius
                         centralAxisSlope = 0
@@ -306,5 +382,9 @@ def main():
                     
     cam_array.StopGrabbing()
     cam_array.Close()
+    return (None, None)
 
-main()
+
+######################### Driver #########################
+worldCoords = findTCP()
+print(worldCoords)
