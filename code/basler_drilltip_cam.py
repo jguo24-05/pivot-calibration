@@ -98,6 +98,7 @@ def detectCircles(grayFrame, accumulatorRes, minDist, cannyThreshold, circAccThr
             if (pointOnLine(center, centralAxis[0], centralAxis[1], dispTolerance)):
                 return (center, radius)
 
+
 def detectTip(calibration_filepath):
     # conecting to the first available camera
     camera = pylon.InstantCamera(pylon.TlFactory.GetInstance().CreateFirstDevice())

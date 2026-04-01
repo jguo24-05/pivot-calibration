@@ -97,9 +97,13 @@ def getCalibrationImages(filepath1, filepath2):
                         imageCounter += 1
 
                 if (cam_id == 0):
+                    cv2.namedWindow("Window 1", cv2.WINDOW_NORMAL)
+                    cv2.resizeWindow('Window 1', 700, 500)
                     cv2.imshow('Window 1', color_image)
                     
                 elif (cam_id == 1):
+                    cv2.namedWindow("Window 2", cv2.WINDOW_NORMAL)
+                    cv2.resizeWindow('Window 2', 700, 500)
                     cv2.imshow('Window 2', color_image)
                 
                 # check if q button has been pressed

@@ -104,9 +104,9 @@ def detectLines(color_image, edges, line_thresh, minLineLength, maxLineGap, minD
 # Detect circles that lie on the given centralAxis
 def detectCircles(grayFrame, accumulatorRes, minDist, cannyThreshold, circAccThreshold, minRadius, maxRadius, centralAxis, dispTolerance):
     # Detect circles with the Hough transform
-    circles = cv2.HoughCircles(grayFrame, cv2.HOUGH_GRADIENT_ALT, 
-                            dp = accumulatorRes, minDist = minDist, param1 = 300,   # for hough_gradient_alt 
-                            param2 = 0.5, minRadius = minRadius, 
+    circles = cv2.HoughCircles(grayFrame, cv2.HOUGH_GRADIENT, 
+                            dp = accumulatorRes, minDist = minDist, param1 = cannyThreshold,   # for hough_gradient_alt 
+                            param2 = circAccThreshold, minRadius = minRadius, 
                             maxRadius = maxRadius);
 
     if not (circles is None):
@@ -175,7 +175,7 @@ def findTCP():
     circleAccMin = 10
     circleAccMax = 300
     # Minimum circle radius
-    minRadiusMin = 50
+    minRadiusMin = 30
     minRadiusMax = 100
     # Maximum circle radius
     maxRadiusMin = 200
@@ -250,9 +250,9 @@ def findTCP():
     worldCoordinates = []
     if (points745 is not None):
         worldPoint = grab3DPoints("./calibration_data/external_parameters.json", points745, points746)
-        worldCoordinates.append(worldPoint)
+        # worldCoordinates.append(worldPoint)
 
-    return worldCoordinates
+    # return worldCoordinates
 
 
 # Runs the main loop until the TCP is detected by both cameras (loop broken with 'q' key)
@@ -273,7 +273,7 @@ def runDetection(win_name, cam_array, frame_counts, converter, cameraMatrix745, 
                 image = converter.Convert(res)
                 color_image = image.GetArray()
                 
-                if (cam_id == 1):
+                if (cam_id == 0):
                     new_K, color_image = undistort_image(color_image, cameraMatrix745, distCoeffs745)
                 else:
                     new_K, color_image = undistort_image(color_image, cameraMatrix746, distCoeffs746)
@@ -349,14 +349,15 @@ def runDetection(win_name, cam_array, frame_counts, converter, cameraMatrix745, 
                         center_y = center[1]
 
                         if (currCam_id == 0):
-                            points745 = np.transpose(np.array(center_x, center_y))
+                            points745 = np.array([center_x, center_y], dtype=np.float32).reshape(2, 1)
                             currCam_id = 1
                         else:
-                            points746 = np.transpose(np.array(center_x, center_y))
-
-                            cam_array.StopGrabbing()
-                            cam_array.Close()
-                            return (points745, points746)
+                            points746 = np.array([center_x, center_y], dtype=np.float32).reshape(2, 1)
+                            worldPoint = grab3DPoints("./calibration_data/external_parameters.json", points745, points746)
+                            
+                            cv2.putText(color_image, f"Position (mm): ({worldPoint[0][0]: .1f}, {worldPoint[1][0]: .1f}, {worldPoint[2][0]: .1f})",
+                                         (70, 220), cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0, 255, 0), 3)
+                            
 
                         micronsOverPixels = 1000/radius
                         centralAxisSlope = 0
@@ -382,7 +383,7 @@ def runDetection(win_name, cam_array, frame_counts, converter, cameraMatrix745, 
                     
     cam_array.StopGrabbing()
     cam_array.Close()
-    return (None, None)
+    return (points745, points746)
 
 
 ######################### Driver #########################

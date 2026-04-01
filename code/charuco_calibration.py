@@ -14,18 +14,14 @@ import glob
 to calibrate, call:
 
 mtx, dst = write_calibration_parameters('./charuco_images/745dump/charuco*.png', './calibration_data/cam745_calibration.json')
-images = glob.glob('./charuco_images/745dump/charuco*.png')
-for image_file in images:
-        image = cv2.imread(image_file)
-        if (image is not None):
-            new_K, _ = undistort_image(image, mtx, dst)
+mtx, dst = write_calibration_parameters('./charuco_images/746dump/charuco*.png', './calibration_data/cam746_calibration.json')
 '''
 
 ARUCO_DICT = cv2.aruco.DICT_4X4_50   # Dictionary ID
 SQUARES_VERTICALLY = 5               # Number of squares vertically
 SQUARES_HORIZONTALLY = 7             # Number of squares horizontally
-SQUARE_LENGTH = 1                    # Square side length (in arbitrary unit u)
-MARKER_LENGTH = 0.7                  # ArUco marker side length (in u)
+SQUARE_LENGTH = 9.0 / 7.0            # Square side length (mm)
+MARKER_LENGTH = 0.7 * 9.0 / 7.0      # ArUco marker side length (in u)
 MARGIN_PX = 0                        # Margins size (in u)
 
 # TODO: try with newer API calls? (commented out)

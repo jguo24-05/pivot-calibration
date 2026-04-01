@@ -25,7 +25,6 @@ stereo_calibrate(cameraMatrix745, distCoeffs745, newmtx745, cameraMatrix746, dis
     
 '''
 
-
 # References: 
 # https://temugeb.github.io/opencv/python/2021/02/02/stereo-camera-calibration-and-triangulation.html
 # https://learnopencv.com/making-a-low-cost-stereo-camera-using-opencv/
@@ -35,7 +34,7 @@ criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
 rows = 7 #number of checkerboard rows.
 columns = 10 #number of checkerboard columns.
-world_scaling = 1 #change this to the real world square size
+world_scaling = 1.2 #mm
 
 def stereo_calibrate(mtx1, dist1, newmtx1, mtx2, dist2, newmtx2, filepath1, filepath2, OUTPUT_JSON):
     c1_images_names = sorted(glob.glob(filepath1))
@@ -75,41 +74,31 @@ def stereo_calibrate(mtx1, dist1, newmtx1, mtx2, dist2, newmtx2, filepath1, file
         if c_ret1 == True and c_ret2 == True:
             corners1 = cv2.cornerSubPix(gray1, corners1, (11, 11), (-1, -1), criteria)
             corners2 = cv2.cornerSubPix(gray2, corners2, (11, 11), (-1, -1), criteria)
- 
-            cv2.drawChessboardCorners(frame1, (rows,columns), corners1, c_ret1)
-            cv2.imshow('img', frame1)
- 
-            cv2.drawChessboardCorners(frame2, (rows,columns), corners2, c_ret2)
-            cv2.imshow('img2', frame2)
-            cv2.waitKey(100)
+
+            # cv2.drawChessboardCorners(frame1, (columns, rows), corners1, c_ret1)
+            # cv2.drawChessboardCorners(frame2, (columns, rows), corners2, c_ret2)
+            # cv2.waitKey(0)
  
             objpoints.append(objp)
             imgpoints_left.append(corners1)
             imgpoints_right.append(corners2)
  
-    stereocalibration_flags = cv2.CALIB_FIX_INTRINSIC
+    stereocalibration_flags = 0
     ret, _, _, _, _, R, T, E, F = cv2.stereoCalibrate(objpoints, 
                                                       imgpoints_left, imgpoints_right, 
                                                       mtx1, dist1,
                                                       mtx2, dist2, 
                                                       (width, height), 
-                                                      criteria = criteria, 
+                                                      criteria = criteria,
                                                       flags = stereocalibration_flags)
     
-    rectL, rectR, projMtxL, projMtxR, Q, roiL, roiR = cv2.stereoRectify(newmtx1, dist1,
-                                                                        newmtx2, dist2,
+    rectL, rectR, projMtxL, projMtxR, Q, roiL, roiR = cv2.stereoRectify(mtx1, dist1,
+                                                                        mtx2, dist2,
                                                                         (width, height),
                                                                         R, T)
     
-    Left_Stereo_Map= cv2.initUndistortRectifyMap(newmtx1, dist1, rectL, projMtxL,
-                                                (width, height), cv2.CV_16SC2)
-    Right_Stereo_Map= cv2.initUndistortRectifyMap(newmtx2, dist2, rectR, projMtxR,
-                                                (width, height), cv2.CV_16SC2)
-    
-    data = {"745_Stereo_Map_x": Left_Stereo_Map[0].tolist(), 
-            "745_Stereo_Map_y":Left_Stereo_Map[1].tolist(),
-            "746_Stereo_Map_x":Right_Stereo_Map[0].tolist(),
-            "746_Stereo_Map_y":Right_Stereo_Map[1].tolist(),
+    data = {"R":R.tolist(),
+            "T":T.tolist(),
             "745_projection_mtx":projMtxL.tolist(),
             "746_projection_mtx":projMtxR.tolist()}
 
@@ -126,7 +115,8 @@ def grab3DPoints(json_path, projPoints1, projPoints2):
         json_data = json.load(file)
         projMatr1 = np.array(json_data["745_projection_mtx"])
         projMatr2 = np.array(json_data["746_projection_mtx"])
-        return cv2.triangulatePoints(projMatr1, projMatr2, projPoints1, projPoints2)
+        homogeneous = cv2.triangulatePoints(projMatr1, projMatr2, projPoints1, projPoints2)
+        return (homogeneous[0], homogeneous[1], homogeneous[2]) / (homogeneous[3])
      
 
 #### Calibration Call ####
@@ -144,7 +134,8 @@ cameraMatrix746 = np.array(json_data['mtx'])
 distCoeffs746 = np.array(json_data['dist'])
 newmtx746 = np.array(json_data['newcam_mtx'])
 
-stereo_calibrate(cameraMatrix745, distCoeffs745, newmtx745, cameraMatrix746, distCoeffs746, newmtx746,
-                 "./charuco_images/external_745/charuco*.png", "./charuco_images/external_746/charuco*.png",
+
+stereo_calibrate(cameraMatrix746, distCoeffs746, newmtx746, cameraMatrix745, distCoeffs745, newmtx745,
+                 "./charuco_images/external_746/charuco*.png", "./charuco_images/external_745/charuco*.png",
                  "./calibration_data/external_parameters.json")
     
