@@ -12,13 +12,18 @@ import math
 def nothing(x):
     pass
 
-# Checks if two lines are parallel with the given tolerance
-def checkParallel(line1, line2, tolerance):
+# absolute ratio of slopes
+def slopeRatio(line1, line2):
+    epsilon = 10**-12
     x1, y1, x2, y2 = line1[0]
     u1, v1, u2, v2 = line2[0]
-    if (x2 - x1 == 0 and u2 - u1 == 0): return True
-    elif (x2 - x1 == 0 or u2 - u1 == 0): return False
-    return abs(((y2 - y1) / (x2 - x1)) - ((v2 - v1) / (u2 - u1))) < tolerance
+    if (abs(x2 - x1) < epsilon and abs(u2 - u1) < epsilon): return 1
+    elif (abs(y2 - y1) < epsilon and abs(v2 - v1) < epsilon): return 1
+    elif (abs(x2 - x1) < epsilon or abs(u2 - u1) < epsilon): return 10**9
+    elif (abs(y2 - y1) < epsilon or abs(v2 - v1) < epsilon): return 10**9
+    slope1 = (y2 - y1) / (x2 - x1)
+    slope2 = (v2 - v1) / (u2 - u1)
+    return abs(slope1 / slope2)
     
    
 # Checks if point is on the line defined by (endpoint1, endpoint2) with the given tolerance
@@ -32,23 +37,25 @@ def pointOnLine(point, endpoint1, endpoint2, tolerance):
     return abs(expectedY - point[1]) < tolerance
 
 
-# Returns the distance between two lines
-def distBetweenLines(line1, line2): # assumes parallel lines
+# Returns the euclidean distance between <m1, c1> and <m2, c2>
+def distBetweenLines(line1, line2): 
+    epsilon = 10**-6
     ax1, ax2, ay1, ay2 = line1[0]
     bx1, bx2, by1, by2 = line2[0]
-    if (ax2-ax1 == 0):              # vertical line
-        return bx1-ax1
-    elif (ay2-ay1 == 0):            # horizontal line
-        return by1-ay1
+    if (abs(ax2-ax1) < epsilon and abs(bx2-bx1) < epsilon):    # vertical lines
+        return abs(bx1-ax1)
+    elif (abs(ax2-ax1) < epsilon or abs(bx2-bx1) < epsilon):   # only one vertical line
+        return 10**9    # just a huge number so tests fail
     else:
-        m = (ay2-ay1) / float((ax2-ax1))
-        c1 = ay1 - m*ax1
-        c2 = by1 - m*bx1
-        return (abs(c2 - c1)) / ((1 + pow(m, 2))**0.5)
+        m1 = (ay2-ay1) / float((ax2-ax1))
+        m2 = (by2-by1) / float((bx2-bx1))
+        c1 = ay1 - m1*ax1
+        c2 = by1 - m2*bx1
+        return pow(pow((m1-m2), 2) + pow(c1-c2, 2), 0.5)
 
 
 # Detect lines using Probabilistic Hough Transform
-def detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges, maxDistBtwnEdges, parallelTolerance):
+def detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges, parallelTolerance):
     lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=line_thresh, minLineLength=minLineLength, maxLineGap=maxLineGap) 
 
     if lines is not None:
@@ -63,20 +70,23 @@ def detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges,
             for j in range(i, len(lines)):
                 line1 = lines[i]
                 line2 = lines[j]
-                isParallel = checkParallel(line1, line2, parallelTolerance)
+                rSlope = slopeRatio(line1, line2)
                 distBtwnEdges = distBetweenLines(line1, line2)
-
-                # Debugging:
-                print(f"is parallel: {isParallel}")
-                print(f"distBtwnEdges: {distBtwnEdges}")
+                # print(f"Ratio of Slopes: {rSlope}")
+                # print(f"distBtwnEdges: {distBtwnEdges}")
                 
-                if (isParallel):
+                if (rSlope < parallelTolerance):
                     ax1, ay1, ax2, ay2 = line1[0]
-                    cv2.line(edges, (ax1, ay1), (ax2, ay2), (255, 0, 0), 5)    
+                    cv2.line(edges, (ax1, ay1), (ax2, ay2), (255, 0, 0), 7)    
                     bx1, by1, bx2, by2 = line2[0]
-                    cv2.line(edges, (bx1, by1), (bx2, by2), (255, 0, 0), 5) 
-                if (isParallel and distBtwnEdges > minDistBtwnEdges and distBtwnEdges < maxDistBtwnEdges):
-                    return (line1, line2)
+                    cv2.line(edges, (bx1, by1), (bx2, by2), (255, 0, 0), 1) 
+
+                    if (distBtwnEdges > minDistBtwnEdges and distBtwnEdges < 3000):  # removed maximum distance check..
+                        # Debugging:
+                        print(f"distBtwnEdges: {distBtwnEdges}")
+                        return (line1, line2)
+                    # print(f"Difference in Slopes: {dSlope}")
+                    # print(f"distBtwnEdges: {distBtwnEdges}")
         
         return None     # no parallel lines were found this frame
 
@@ -125,7 +135,7 @@ def detectTip(calibration_filepath):
 
     # Initialize Trackbars for Parameter Tuning
     # Canny Threshold for Line Detection
-    cv2.createTrackbar('Canny Threshold', win_name, 100, 300, nothing);
+    cv2.createTrackbar('Canny Threshold', win_name, 30, 100, nothing);
     # Accumulator Threshold for Lines
     cv2.createTrackbar('Line Accumulator Threshold', win_name, 100, 300, nothing);
     # Circle Radius Accumulator Threshold
@@ -139,9 +149,7 @@ def detectTip(calibration_filepath):
     # Maximum Line Gap: Maximum allowed gap in a line
     cv2.createTrackbar('Maximum Line Gap', win_name, 50, 250, nothing)
     # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Minimum Distance Between Edges', win_name, 20, 40, nothing)
-    # Minimum Distance Between Edge Lines
-    cv2.createTrackbar('Maximum Distance Between Edges', win_name, 60, 80, nothing)
+    cv2.createTrackbar('Minimum Distance Between Edges', win_name, 100, 300, nothing)
     # Tolerance for how far the radius can be from the detected central axis
     cv2.createTrackbar('Maximum Error for Tip and Axis Alignment', win_name, 25, 50, nothing)
 
@@ -169,7 +177,6 @@ def detectTip(calibration_filepath):
             minLineLength = cv2.getTrackbarPos('Minimum Line Length', win_name)
             maxLineGap = cv2.getTrackbarPos('Maximum Line Gap', win_name)
             minDistBtwnEdges = cv2.getTrackbarPos('Minimum Distance Between Edges', win_name)
-            maxDistBtwnEdges = cv2.getTrackbarPos('Maximum Distance Between Edges', win_name)
             minRadius = cv2.getTrackbarPos('Minimum Radius', win_name)
             maxRadius = cv2.getTrackbarPos('Maximum Radius', win_name)
             dispTolerance = cv2.getTrackbarPos('Maximum Error for Tip and Axis Alignment', win_name)
@@ -178,7 +185,13 @@ def detectTip(calibration_filepath):
             cannyMinThreshold = 80;
             edges = cv2.Canny(blurred, cannyMinThreshold, cannyThreshold);
             
-            lineTuple = detectLines(edges, line_thresh, minLineLength, maxLineGap, minDistBtwnEdges, maxDistBtwnEdges, 2)    
+            lineTuple = detectLines(edges, 
+                                    line_thresh, 
+                                    minLineLength, 
+                                    maxLineGap, 
+                                    minDistBtwnEdges, 
+                                    1.5)  # Set Parallel Tolerance here
+            
             if (lineTuple is not None):
                 line1 = lineTuple[0]
                 line2 = lineTuple[1]
@@ -191,9 +204,9 @@ def detectTip(calibration_filepath):
                 by2 = int((ay2+cy2)/2.0)
                 centralAxis = ((bx1, by1), (bx2, by2))
 
-                cv2.line(color_image, (ax1, ay1), (ax2, ay2), (255, 0, 0), 5)    
-                cv2.line(color_image, (cx1, cy1), (cx2, cy2), (255, 0, 0), 5)
-                cv2.line(color_image, centralAxis[0], centralAxis[1], (125, 125, 0), 5)
+                # cv2.line(edges, (ax1, ay1), (ax2, ay2), (255, 0, 0), 5)    
+                # cv2.line(edges, (cx1, cy1), (cx2, cy2), (255, 0, 0), 5)
+                cv2.line(edges, centralAxis[0], centralAxis[1], (125, 125, 0), 5)
 
                 # 4. Detect Drill Tip (Ball/Sphere) Using Hough Circles if Edges Were Detected
                 accumulatorRes = 1     
@@ -213,10 +226,10 @@ def detectTip(calibration_filepath):
                     else:
                         centralAxisSlope = (by2-by1) / (bx2-bx1)
                     
-                    cv2.circle(color_image, (center_x, center_y), radius, (0, 255, 0), 2)
-                    cv2.circle(color_image, (center_x, center_y), 2, (0, 0, 255), 3)
-                    cv2.putText(color_image, f"Microns per pixel: {micronsOverPixels: .2f}", (70, 80), cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0, 255, 0), 3)
-                    cv2.putText(color_image, f"Slope of tool: {centralAxisSlope: .2f}", (70, 150), cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0, 255, 0), 3)
+                    cv2.circle(edges, (center_x, center_y), radius, (0, 255, 0), 2)
+                    cv2.circle(edges, (center_x, center_y), 2, (0, 0, 255), 3)
+                    cv2.putText(edges, f"Microns per pixel: {micronsOverPixels: .2f}", (70, 80), cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0, 255, 0), 3)
+                    cv2.putText(edges, f"Slope of tool: {centralAxisSlope: .2f}", (70, 150), cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0, 255, 0), 3)
 
                     # 5. Calculate the world coordinates using the camera's intrinsic and extrinsic parameters
                     # R_mtx, tvec = findRTvecs(objpoints, imgpoints, new_K, distCoeffs)
@@ -225,10 +238,10 @@ def detectTip(calibration_filepath):
                     # cv2.putText(color_image, f"Center (mm): ({worldCoords[0][0] :.2f}, {worldCoords[1][0]: .2f})", (70, 220), cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0, 255, 0), 3)
             
             # Show Result
-            cv2.imshow(win_name, color_image)
+            cv2.imshow(win_name, edges)
             
-            k = cv2.waitKey(1)
-            if k == 27:
+            key = cv2.waitKey(1)
+            if key == ord('q'):
                 grabResult.Release()
         
                 # Releasing the resource    
